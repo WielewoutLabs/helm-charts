@@ -1,0 +1,4 @@
+name: arc-cleaner-chart
+alias: arc-cleaner
+repository: oci://ghcr.io/wielewoutlabs
+version: 0.3.0
