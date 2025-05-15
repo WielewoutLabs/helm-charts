@@ -1,0 +1,254 @@
+#!/usr/bin/python3
+
+import argparse
+from dataclasses import dataclass
+import json
+import os
+import subprocess
+import yaml
+
+
+@dataclass
+class Chart:
+    name: str
+    path: str
+
+
+def main():
+    args = get_args()
+
+    charts = get_charts(args.type, args.changed_only, args.target_branch)
+    output = generate_output_charts(
+        charts, args.output, args.chart_output, args.delimiter
+    )
+    print(output)
+
+
+def get_args():
+    msg = "List charts in different ways to use with ct"
+    parser = argparse.ArgumentParser(msg)
+
+    parser.add_argument(
+        "type",
+        nargs="?",
+        choices=["lint", "test", "all", "app", "lib"],
+        default="all",
+        help="Show all charts (all), application charts (app), library charts (lib), charts to ct lint (lint) or to ct test (test)",
+    )
+
+    parser.add_argument(
+        "-l",
+        "--list",
+        action="store_const",
+        const="list",
+        dest="output",
+        default="list",
+        help="Show charts in a list",
+    )
+    parser.add_argument(
+        "-m",
+        "--matrix",
+        action="store_const",
+        const="matrix",
+        dest="output",
+        help="Show charts in a GitHub Actions matrix",
+    )
+
+    parser.add_argument(
+        "-n",
+        "--name",
+        action="store_const",
+        const="name",
+        dest="chart_output",
+        default="name",
+        help="Output charts by name",
+    )
+    parser.add_argument(
+        "-p",
+        "--path",
+        action="store_const",
+        const="path",
+        dest="chart_output",
+        help="Show charts by path",
+    )
+
+    parser.add_argument(
+        "-d",
+        "--delimiter",
+        default="\r\n",
+        help="Set the delimiter to show charts in a list",
+    )
+
+    parser.add_argument(
+        "-c",
+        "--changed-only",
+        action="store_true",
+        help="Only show changed charts compared to the target branch",
+    )
+
+    parser.add_argument(
+        "-t",
+        "--target-branch",
+        default="main",
+        help="The target branch to compare with when only showing changed charts (default=main)",
+    )
+
+    return parser.parse_args()
+
+
+def get_charts(type: str, changed_only: bool, target_branch: str) -> list[Chart]:
+    if changed_only:
+        charts = get_changed_charts(
+            os.path.join(get_git_root_path(), "charts"), target_branch
+        )
+    else:
+        charts = get_all_charts(get_git_root_path())
+
+    filters = {
+        "all": lambda _: True,
+        "app": is_app_chart,
+        "lib": is_lib_chart,
+        "lint": is_chart_to_lint,
+        "test": is_chart_to_test,
+    }
+
+    return list(filter(filters[type], charts))
+
+
+def get_git_root_path() -> str:
+    bin_dir_path = os.path.dirname(os.path.realpath(__file__))
+    git_root_path = os.path.abspath(os.path.join(bin_dir_path, os.pardir))
+
+    return git_root_path
+
+
+def get_changed_charts(path: str, target_branch: str) -> list[Chart]:
+    if os.path.isfile(path):
+        return []
+
+    charts: list[Chart] = []
+
+    changed_chart_paths = get_changed_chart_paths(path, target_branch)
+    for changed_chart_path in changed_chart_paths:
+        changed_chart_name = os.path.basename(changed_chart_path)
+        chart = Chart(name=changed_chart_name, path=changed_chart_path)
+        charts.append(chart)
+
+    for fd in os.listdir(path):
+        new_path = os.path.join(path, fd)
+        if os.path.isdir(new_path):
+            charts += get_changed_charts(new_path, target_branch)
+
+    return charts
+
+
+def get_changed_chart_paths(path: str, target_branch: str) -> list[str]:
+    git_root_path: str = get_git_root_path()
+    config_file_path: str = os.path.join(git_root_path, "etc/ct.yaml")
+    chart_dir: str = os.path.relpath(path, git_root_path)
+
+    completed_process = subprocess.run(
+        [
+            "/bin/sh",
+            "-c",
+            f"cd {git_root_path} && ct list-changed --config {config_file_path} --target-branch {target_branch} --chart-dirs {chart_dir}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    if completed_process.returncode != 0:
+        return []
+
+    if completed_process.stdout == "":
+        return []
+
+    relative_chart_paths = completed_process.stdout.strip("\n").split("\n")
+    return [
+        os.path.join(git_root_path, relative_chart_path)
+        for relative_chart_path in relative_chart_paths
+    ]
+
+
+def get_all_charts(path: str) -> list[Chart]:
+    if os.path.isfile(path):
+        return []
+
+    charts: list[Chart] = []
+
+    if is_chart_dir(path):
+        chart_name = os.path.basename(path)
+        chart = Chart(name=chart_name, path=path)
+        charts.append(chart)
+
+    for fd in os.listdir(path):
+        new_path = os.path.join(path, fd)
+        if os.path.isdir(new_path):
+            charts += get_all_charts(new_path)
+
+    return charts
+
+
+def is_chart_dir(path: str) -> bool:
+    return os.path.isfile(get_chart_yaml_path(path))
+
+
+def get_chart_yaml_path(chart_path: str) -> str:
+    return os.path.join(chart_path, "Chart.yaml")
+
+
+def is_chart_to_lint(chart: Chart) -> bool:
+    return True
+
+
+def is_chart_to_test(chart: Chart) -> bool:
+    return is_app_chart(chart) and not is_ignored_chart_for_test(chart)
+
+
+def is_app_chart(chart: Chart) -> bool:
+    with open(get_chart_yaml_path(chart.path), "r") as f:
+        data = yaml.safe_load(f)
+        return data.get("type") == "application"
+
+
+def is_lib_chart(chart: Chart) -> bool:
+    with open(get_chart_yaml_path(chart.path), "r") as f:
+        data = yaml.safe_load(f)
+        return data.get("type") == "library"
+
+
+def is_ignored_chart_for_test(chart: Chart) -> bool:
+    return os.path.isfile(get_ignored_chart_for_test_path(chart.path))
+
+
+def get_ignored_chart_for_test_path(chart_path: str) -> str:
+    return os.path.join(chart_path, ".ct-install-ignore")
+
+
+def generate_output_charts(
+    charts: list[Chart], output: str, charts_output: str, delimiter: str
+) -> str:
+    chart_names: list[str] = [chart.name for chart in charts]
+    chart_paths = [chart.path for chart in charts]
+
+    if output == "list":
+        if charts_output == "path":
+            charts = chart_paths
+        else:
+            charts = chart_names
+
+        return delimiter.join(charts)
+
+    if output == "matrix":
+        return json.dumps(
+            {
+                "chart": chart_names,
+                "include": [
+                    {"chart": chart.name, "chart_path": chart.path} for chart in charts
+                ],
+            }
+        )
+
+
+if __name__ == "__main__":
+    main()

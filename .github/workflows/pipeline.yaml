@@ -1,0 +1,281 @@
+name: Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - releases/**
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+
+  vars:
+    name: Variables
+    # This is a work-around to be able to properly use variables.
+    # This job should be made a dependency in order to be able to use its outputs.
+    runs-on: ubuntu-24.04
+    outputs:
+      is_main_branch: ${{ github.ref_type == 'branch' && github.ref_name == 'main' }}
+      is_release_branch: ${{ github.ref_type == 'branch' && startsWith(github.ref_name, 'releases/') }}
+      is_pull_request: ${{ github.event_name == 'pull_request' }}
+      target_branch: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || github.ref_name }}
+      lib_charts: ${{ steps.list-charts.outputs.lib_charts }}
+      charts_to_lint: ${{ steps.list-charts.outputs.charts_to_lint }}
+      charts_to_test: ${{ steps.list-charts.outputs.charts_to_test }}
+      charts_to_test_matrix: ${{ steps.list-charts.outputs.charts_to_test_matrix }}
+      # renovate: github_repository=metallb/metallb versioning=semver
+      metallb_version: v0.14.9
+      # renovate: github_repository=halkeye/helm-repo-html versioning=semver
+      helm_repo_html_version: v0.2.1
+    timeout-minutes: 1
+    steps:
+      - name: Expose variables
+        run: echo "Exposing variables for proper usage"
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
+
+      - name: Set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          check-latest: true
+
+      - name: Set up chart-testing
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: helm/chart-testing-action@v2.7.0
+
+      - name: List charts
+        id: list-charts
+        run: |
+          echo "lib_charts=$(./bin/list-charts ${{ github.event_name == 'pull_request' && format('--changed-only --target-branch={0}', github.base_ref) || '' }} --list --delimiter=, --path lib)" | tee -a $GITHUB_OUTPUT
+          echo "charts_to_lint=$(./bin/list-charts ${{ github.event_name == 'pull_request' && format('--changed-only --target-branch={0}', github.base_ref) || '' }} --list --delimiter=, --path lint)" | tee -a $GITHUB_OUTPUT
+          echo "charts_to_test=$(./bin/list-charts ${{ github.event_name == 'pull_request' && format('--changed-only --target-branch={0}', github.base_ref) || '' }} --list --delimiter=, --path test)" | tee -a $GITHUB_OUTPUT
+          echo "charts_to_test_matrix=$(./bin/list-charts ${{ github.event_name == 'pull_request' && format('--changed-only --target-branch={0}', github.base_ref) || '' }} --matrix test)" | tee -a $GITHUB_OUTPUT
+
+  lint-charts:
+    name: Lint Charts
+    needs:
+      - vars
+    runs-on: ubuntu-24.04
+    if: ${{ needs.vars.outputs.charts_to_lint != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4.3.0
+
+      - name: Set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          check-latest: true
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.7.0
+
+      - name: Add helm repositories
+        run: ./bin/add-repos
+
+      - name: Prepare library charts
+        run: |
+          lib_charts="${{ needs.vars.outputs.lib_charts }}"
+          for lc in ${lib_charts//,/ } ; do
+              # Add values.yaml file so the linter doesn't complain
+              echo "${lc}/values.yaml"
+              touch "${lc}/values.yaml"
+          done
+
+      - name: Lint charts
+        run: >-
+          ct
+          lint
+          --config etc/ct.yaml
+          --charts ${{ needs.vars.outputs.charts_to_lint }}
+
+  test-charts:
+    name: Test Charts
+    needs:
+      - vars
+    if: ${{ needs.vars.outputs.charts_to_test != '' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.vars.outputs.charts_to_test_matrix) }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4.3.0
+
+      - name: Set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          check-latest: true
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.7.0
+
+      - name: Add helm repositories
+        run: ./bin/add-repos
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.12.0
+
+      - name: Install metallb for loadbalancer services
+        id: metallb
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/${{ needs.vars.outputs.metallb_version }}/config/manifests/metallb-native.yaml
+
+          kubectl wait --namespace metallb-system \
+            --for=condition=ready pod \
+            --selector=app=metallb \
+            --timeout=90s
+
+          subnets=$(docker network inspect -f '{{range .IPAM.Config}}{{printf "%s\n" .Subnet}}{{end}}' kind)
+          printf "subnets:\n%s\n" "${subnets}"
+          ipv4_subnets=$(echo "$subnets" | grep -E '(([0-9]{1,3})\.){3}([0-9]{1,3})\/([0-9]|[1-2][0-9]|3[0-2])')
+          printf "ipv4_subnets=\n%s\n" "${ipv4_subnets}"
+          subnet=$(echo "$ipv4_subnets" | head -n 1)
+          printf "subnet=%s\n" "${subnet}"
+
+          net_ip=$(echo "$subnet" | cut -d/ -f1)
+          printf "net_ip=%s\n" "${net_ip}"
+          cidr=$(echo "$subnet" | cut -d/ -f2)
+          printf "cidr=%s\n" "${cidr}"
+          if [ $cidr -gt 24 ]; then
+            echo "CIDR of $subnet needs to be 24 or smaller" 1>&2
+            exit 1
+          fi
+
+          net_ip_prefix=$(echo $net_ip | cut -d. -f 1-3)
+          ip_range=$net_ip_prefix.200-$net_ip_prefix.250
+          printf "ip_range=%s\n" "${ip_range}"
+
+          ip_address=$net_ip_prefix.250
+          printf "ip_address=%s\n" "${ip_address}" | tee -a $GITHUB_OUTPUT
+
+          cat <<EOF | kubectl apply -f -
+          apiVersion: metallb.io/v1beta1
+          kind: IPAddressPool
+          metadata:
+            name: example
+            namespace: metallb-system
+          spec:
+            addresses:
+            - $ip_range
+          ---
+          apiVersion: metallb.io/v1beta1
+          kind: L2Advertisement
+          metadata:
+            name: empty
+            namespace: metallb-system
+          EOF
+
+      - name: Test charts
+        run: >-
+          ct
+          install
+          --namespace default
+          --config etc/ct.yaml
+          --charts ${{ matrix.chart_path }}
+          --helm-extra-set-args "--set=global.ipAddress=${{ steps.metallb.outputs.ip_address }}"
+
+  # This is a work-around for a required check with matrix in the branch protection rules
+  status-charts:
+    name: Status Charts
+    needs:
+      - vars
+      - lint-charts
+      - test-charts
+    if: ${{ needs.vars.outputs.is_pull_request == 'true' && !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Successful checks
+        if: ${{ !(contains(needs.*.result, 'failure')) }}
+        run: exit 0
+      - name: Failing checks
+        if: ${{ contains(needs.*.result, 'failure') }}
+        run: exit 1
+
+  release-charts:
+    name: Release Charts
+    if: ${{ needs.vars.outputs.is_main_branch == 'true' || needs.vars.outputs.is_release_branch == 'true' }}
+    needs:
+      - vars
+      - lint-charts
+      - test-charts
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Set git user
+        uses: git-actions/set-user@v1
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4.3.0
+
+      - name: Install helm repo html plugin
+        if: ${{ needs.vars.outputs.is_main_branch == 'true' }}
+        run: helm plugin install https://github.com/halkeye/helm-repo-html --version ${{ needs.vars.outputs.helm_repo_html_version }}
+
+      - name: Add helm repositories
+        run: ./bin/add-repos
+
+      - name: Login to Docker Hub
+        run: helm registry login --username ${{ secrets.DOCKER_USERNAME }} --password ${{ secrets.DOCKER_PASSWORD }} docker.io
+
+      - name: Login to GHCR
+        run: helm registry login --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }} ghcr.io
+
+      - name: Pull external helm charts
+        run: ./bin/pull-external-charts
+
+      - name: Generate release notes
+        run: ./bin/generate-release-notes
+
+      - name: Run chart releaser
+        uses: helm/chart-releaser-action@v1.7.0
+        with:
+          config: etc/cr.yaml
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Generate repo html index
+        if: ${{ needs.vars.outputs.is_main_branch == 'true' }}
+        run: |-
+          git checkout gh-pages
+          git pull # pull index.yaml commit from chart releaser
+          helm repo-html
+          if ! git diff --exit-code index.html > /dev/null 2>&1 ; then
+            git add index.html
+            git commit -s -m "Update index.html"
+            git push
+          fi
+          git checkout -
+
+  release-please:
+    name: Release
+    if: ${{ needs.vars.outputs.is_main_branch == 'true' || needs.vars.outputs.is_release_branch == 'true' }}
+    # Run after release-charts so that the tag exists in case of release commits.
+    # Otherwise release please will create a new PR
+    # as it doesn't yet have the release to compare changes with.
+    needs:
+      - vars
+      - release-charts
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: ./.github/workflows/release-please.yaml
+    secrets: inherit

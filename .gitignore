@@ -1,0 +1,6 @@
+**/*.tgz
+**/RELEASE_NOTES.md
+
+venv/
+.idea
+.vscode
