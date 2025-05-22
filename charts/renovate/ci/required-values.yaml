@@ -1,0 +1,4 @@
+schedule: "@hourly"
+config:
+  repositories:
+    - wielewoutlabs/helm-charts

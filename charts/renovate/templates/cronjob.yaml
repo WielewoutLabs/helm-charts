@@ -1,0 +1,126 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "renovate.fullname" . }}
+  labels:
+    {{- include "renovate.labels" . | nindent 4 }}
+spec:
+  schedule: "{{ $.Values.schedule | required "A schedule is required (schedule)" }}"
+  {{- with $.Values.concurrencyPolicy }}
+  concurrencyPolicy: {{ . }}
+  {{- end }}
+  {{- with $.Values.successfulJobsHistoryLimit }}
+  successfulJobsHistoryLimit: {{ . }}
+  {{- end }}
+  {{- with $.Values.failedJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ . }}
+  {{- end }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          {{- with $.Values.podAnnotations }}
+          annotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          labels:
+            {{- include "renovate.labels" . | nindent 12 }}
+            {{- with $.Values.podLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        spec:
+          restartPolicy: Never
+          {{- with $.Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 8 }}
+          {{- end }}
+          serviceAccountName: {{ include "renovate.serviceAccountName" . }}
+          {{- if $.Values.githubApp.enabled }}
+          initContainers:
+            - name: github-app-install-token
+              image: "{{ $.Values.githubAppInstallTokenImage.repository }}:{{ $.Values.githubAppInstallTokenImage.tag | default $.Chart.AppVersion }}"
+              imagePullPolicy: {{ $.Values.githubAppInstallTokenImage.pullPolicy }}
+              env:
+                - name: RENOVATE_CONFIG_FILE
+                  value: /tmp/renovate/config.json
+                - name: RENOVATE_CONFIG_DESTINATION
+                  value: /tmp/config/config.json
+              envFrom:
+                - secretRef:
+                    name: {{ include "renovate.fullname" . }}-github-app
+              volumeMounts:
+                - name: static-config-volume
+                  mountPath: /tmp/renovate
+                - name: config-volume
+                  mountPath: /tmp/config
+          {{- end }}
+          containers:
+            - name: {{ $.Chart.Name }}
+              image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+              imagePullPolicy: {{ $.Values.image.pullPolicy }}
+              env:
+                - name: LOG_LEVEL
+                  value: {{ $.Values.logLevel }}
+                - name: RENOVATE_BASE_DIR
+                  value: /tmp/renovate/
+                - name: RENOVATE_CONFIG_FILE
+                  value: /opt/renovate/config.json
+                {{- if $.Values.secretEnv }}
+                - name: RENOVATE_DETECT_HOST_RULES_FROM_ENV
+                  value: true
+                {{- end }}
+              {{- if $.Values.secretEnv }}
+              envFrom:
+                - secretRef:
+                    name: {{ include "renovate.fullname" . }}-env
+              {{- end }}
+              volumeMounts:
+                {{- if $.Values.githubApp.enabled }}
+                - name: config-volume
+                  mountPath: /opt/renovate/
+                - name: work-volume
+                  mountPath: /tmp/renovate/
+                {{- else }}
+                - name: static-config-volume
+                  mountPath: /opt/renovate
+                {{- end }}
+                {{- with $.Values.volumeMounts }}
+                {{- toYaml . | nindent 12 }}
+                {{- end }}
+              {{- with $.Values.securityContext }}
+              securityContext:
+                {{- toYaml . | nindent 12 }}
+              {{- end }}
+              {{- with $.Values.resources }}
+              resources:
+                {{- toYaml . | nindent 12 }}
+              {{- end }}
+          volumes:
+            - name: static-config-volume
+              configMap:
+                name: {{ include "renovate.fullname" . }}-config
+            {{- if $.Values.githubApp.enabled }}
+            - name: config-volume
+              emptyDir: {}
+            - name: work-volume
+              emptyDir: {}
+            {{- end }}
+            {{- with $.Values.volumes }}
+            {{- toYaml . | nindent 8 }}
+            {{- end }}
+          {{- with $.Values.podSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 8 }}
+          {{- end }}
+          {{- with $.Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 8 }}
+          {{- end }}
+          {{- with $.Values.affinity }}
+          affinity:
+            {{- toYaml . | nindent 8 }}
+          {{- end }}
+          {{- with $.Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 8 }}
+          {{- end }}

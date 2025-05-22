@@ -1,0 +1,69 @@
+nameOverride: ""
+fullnameOverride: ""
+
+logLevel: info
+
+githubApp:
+  enabled: false
+  id: ""
+  installId: ""
+  privateKey: ""
+
+config:
+  platform: "github"
+  onboardingConfigFileName: ".github/renovate.json"
+  onboardingConfig:
+    $schema: "https://docs.renovatebot.com/renovate-schema.json"
+    extends:
+      - "config:recommended"
+  gitIgnoredAuthors:
+    - "bot@renovateapp.com"
+  repositories: []
+
+secretEnv: {}
+  # DOCKER_USERNAME: ""
+  # DOCKER_PASSWORD: ""
+  # DOCKER_GHCR_IO_USERNAME: ""
+  # DOCKER_GHCR_IO_PASSWORD: ""
+
+githubAppInstallTokenImage:
+  repository: ghcr.io/wielewoutlabs/renovate-github-app-install-token
+  pullPolicy: IfNotPresent
+  tag: 0.1.0
+
+image:
+  repository: renovate/renovate
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+
+schedule: ""
+concurrencyPolicy: Forbid
+successfulJobsHistoryLimit: 3
+failedJobsHistoryLimit: 1
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+resources: {}
+
+volumes: []
+
+volumeMounts: []
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
