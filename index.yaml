@@ -21,4 +21,15 @@ entries:
     urls:
     - https://github.com/WielewoutLabs/helm-charts/releases/download/arc-cleaner-0.3.0/arc-cleaner-0.3.0.tgz
     version: 0.3.0
-generated: "2025-05-16T13:44:40.097044815Z"
+  renovate:
+  - apiVersion: v2
+    appVersion: 40.23.0
+    created: "2025-05-22T16:12:42.47721757Z"
+    description: Renovate with github app install token
+    digest: d406af4307fd35e721ccdddb47dcbc7209ede5d82a63de4c7f249751b4ffa2b8
+    name: renovate
+    type: application
+    urls:
+    - https://github.com/WielewoutLabs/helm-charts/releases/download/renovate-40.23.0/renovate-40.23.0.tgz
+    version: 40.23.0
+generated: "2025-05-22T16:12:42.477230364Z"
