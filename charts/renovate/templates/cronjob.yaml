@@ -60,14 +60,14 @@ spec:
               imagePullPolicy: {{ $.Values.image.pullPolicy }}
               env:
                 - name: LOG_LEVEL
-                  value: {{ $.Values.logLevel }}
+                  value: "{{ $.Values.logLevel }}"
                 - name: RENOVATE_BASE_DIR
                   value: /tmp/renovate/
                 - name: RENOVATE_CONFIG_FILE
                   value: /opt/renovate/config.json
                 {{- if $.Values.secretEnv }}
                 - name: RENOVATE_DETECT_HOST_RULES_FROM_ENV
-                  value: true
+                  value: "true"
                 {{- end }}
               {{- if $.Values.secretEnv }}
               envFrom:
