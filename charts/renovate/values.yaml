@@ -29,7 +29,7 @@ secretEnv: {}
 githubAppInstallTokenImage:
   repository: ghcr.io/wielewoutlabs/renovate-github-app-install-token
   pullPolicy: IfNotPresent
-  tag: 0.1.0
+  tag: 1.0.0
 
 image:
   repository: renovate/renovate
