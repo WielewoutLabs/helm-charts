@@ -1,0 +1,12 @@
+{{- if empty $.Values.config.repositories }}
+{{- fail "A list of repositories is required (config.repositories)" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "renovate.fullname" . }}-config
+  labels:
+    {{- include "renovate.labels" . | nindent 4 }}
+data:
+  config.json: |-
+    {{- tpl (toJson $.Values.config) $ | fromJson | toPrettyJson | nindent 4 }}

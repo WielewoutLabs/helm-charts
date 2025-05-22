@@ -28,7 +28,7 @@
         "(^|/)Chart\\.yaml$"
       ],
       "matchStrings": [
-        "#\\s?renovate: image=(?<depName>.*?)( versioning=(?<versioning>.*?))?( extract_version=(?<extractVersion>.*?))?\\s?appVersion:\\s?\"?(?<currentValue>[\\w+\\.\\-]*)\"?"
+        "#\\s?renovate: image=(?<depName>.*?)( versioning=(?<versioning>.*?))?( extract_version=(?<extractVersion>.*?))?\\s?(app)?[vV]ersion:\\s?\"?(?<currentValue>[\\w+\\.\\-]*)\"?"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}docker{{/if}}"
     },

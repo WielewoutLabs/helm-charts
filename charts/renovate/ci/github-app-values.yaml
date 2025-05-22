@@ -1,0 +1,11 @@
+schedule: "@hourly"
+config:
+  repositories:
+    - wielewoutlabs/helm-charts
+
+githubApp:
+  enabled: true
+  id: "my-app-id"
+  installId: "my-app-install-id"
+  privateKey: |-
+    <my app private key>
