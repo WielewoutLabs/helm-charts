@@ -2,6 +2,16 @@ apiVersion: v1
 entries:
   arc-cleaner:
   - apiVersion: v2
+    appVersion: 0.3.2
+    created: "2025-05-23T09:01:55.896665157Z"
+    description: A cleaner for GitHub ARC
+    digest: 6d25b5c8c418157550d26df7d580c8c8fab222e9c469df1f4b04a787ba9258b5
+    name: arc-cleaner
+    type: application
+    urls:
+    - https://github.com/WielewoutLabs/helm-charts/releases/download/arc-cleaner-0.3.2/arc-cleaner-0.3.2.tgz
+    version: 0.3.2
+  - apiVersion: v2
     appVersion: 0.3.1
     created: "2025-05-16T13:44:40.097033242Z"
     description: A cleaner for GitHub ARC
@@ -52,4 +62,4 @@ entries:
     urls:
     - https://github.com/WielewoutLabs/helm-charts/releases/download/renovate-40.23.0/renovate-40.23.0.tgz
     version: 40.23.0
-generated: "2025-05-22T16:33:59.435132194Z"
+generated: "2025-05-23T09:01:55.896680225Z"
