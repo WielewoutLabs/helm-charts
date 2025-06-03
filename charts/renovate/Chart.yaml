@@ -3,6 +3,6 @@ name: renovate
 description: Renovate with github app install token
 type: application
 # renovate: image=renovate/renovate
-version: 40.39.0
+version: 40.39.2
 # renovate: image=renovate/renovate
-appVersion: 40.39.0
+appVersion: 40.39.2
