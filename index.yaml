@@ -33,6 +33,16 @@ entries:
     version: 0.3.0
   renovate:
   - apiVersion: v2
+    appVersion: 41.165.1
+    created: "2025-10-29T09:06:33.923681117Z"
+    description: Renovate with github app install token
+    digest: 9d8137da6386c097f5bd54c8b19d4855f3137a64ce39425a89de649244d5bc7d
+    name: renovate
+    type: application
+    urls:
+    - https://github.com/WielewoutLabs/helm-charts/releases/download/renovate-41.165.1/renovate-41.165.1.tgz
+    version: 41.165.1
+  - apiVersion: v2
     appVersion: 41.164.1
     created: "2025-10-29T01:05:55.54179265Z"
     description: Renovate with github app install token
@@ -4112,4 +4122,4 @@ entries:
     urls:
     - https://github.com/WielewoutLabs/helm-charts/releases/download/renovate-40.23.0/renovate-40.23.0.tgz
     version: 40.23.0
-generated: "2025-10-29T01:05:55.542784938Z"
+generated: "2025-10-29T09:06:33.924607088Z"
