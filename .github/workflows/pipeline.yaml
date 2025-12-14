@@ -230,9 +230,9 @@ jobs:
         if: ${{ needs.vars.outputs.is_main_branch == 'true' }}
         run: >-
           helm plugin install
+          --verify false
           https://github.com/halkeye/helm-repo-html
           --version ${{ needs.vars.outputs.helm_repo_html_version }}
-          --verify false
 
       - name: Add helm repositories
         run: ./bin/add-repos
